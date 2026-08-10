@@ -1,0 +1,1710 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>WriteAssist Pro - AI Writing Assistant</title>
+
+    <!-- ==================== PWA install support ====================
+         Lets this be installed to a home screen / app drawer with its own
+         icon, opening full-screen without browser chrome, on Android,
+         desktop Chrome/Edge, and (via Safari's "Add to Home Screen") iOS. -->
+    <link rel="manifest" href="./manifest.json">
+    <meta name="theme-color" content="#2563eb">
+    <meta name="mobile-web-app-capable" content="yes">
+    <meta name="apple-mobile-web-app-capable" content="yes">
+    <meta name="apple-mobile-web-app-status-bar-style" content="default">
+    <meta name="apple-mobile-web-app-title" content="WriteAssist">
+    <style>
+        @import url('https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&display=swap');
+        
+        * { margin: 0; padding: 0; box-sizing: border-box; }
+        
+        :root {
+            --primary: #1a73e8;
+            --primary-light: #e8f0fe;
+            --success: #0d904f;
+            --success-light: #e6f4ea;
+            --warning: #e37400;
+            --warning-light: #fef7e0;
+            --error: #d93025;
+            --error-light: #fce8e6;
+            --info: #4285f4;
+            --info-light: #e8f0fe;
+            --bg: #f8f9fa;
+            --surface: #ffffff;
+            --text: #202124;
+            --text-secondary: #5f6368;
+            --border: #dadce0;
+            --shadow: 0 1px 3px rgba(0,0,0,0.12), 0 1px 2px rgba(0,0,0,0.08);
+            --shadow-lg: 0 4px 16px rgba(0,0,0,0.12);
+        }
+
+        [data-theme="dark"] {
+            --primary: #8ab4f8;
+            --primary-light: #2a3a52;
+            --success: #81c995;
+            --success-light: #1e3a2a;
+            --warning: #fdd663;
+            --warning-light: #3d3018;
+            --error: #f28b82;
+            --error-light: #3d2321;
+            --info: #8ab4f8;
+            --info-light: #2a3a52;
+            --bg: #202124;
+            --surface: #292a2d;
+            --text: #e8eaed;
+            --text-secondary: #9aa0a6;
+            --border: #3c4043;
+            --shadow: 0 1px 3px rgba(0,0,0,0.4), 0 1px 2px rgba(0,0,0,0.3);
+            --shadow-lg: 0 4px 16px rgba(0,0,0,0.4);
+        }
+
+        body {
+            font-family: 'Inter', -apple-system, BlinkMacSystemFont, sans-serif;
+            background: var(--bg);
+            color: var(--text);
+            min-height: 100vh;
+            transition: background 0.2s, color 0.2s;
+        }
+
+        /* Accessibility: visible keyboard focus outlines everywhere interactive */
+        a:focus-visible, button:focus-visible, select:focus-visible,
+        [tabindex]:focus-visible, #editor:focus-visible {
+            outline: 2px solid var(--primary);
+            outline-offset: 2px;
+        }
+
+        .status-pill {
+            display: flex;
+            align-items: center;
+            gap: 6px;
+            padding: 6px 12px;
+            border-radius: 8px;
+            font-size: 12px;
+            font-weight: 600;
+            background: var(--success-light);
+            color: var(--success);
+            white-space: nowrap;
+        }
+        .status-pill.status-local { background: var(--warning-light); color: var(--warning); }
+        .status-dot { width: 7px; height: 7px; border-radius: 50%; background: currentColor; }
+
+        .icon-btn {
+            width: 36px;
+            height: 36px;
+            border: 1px solid var(--border);
+            background: var(--surface);
+            border-radius: 8px;
+            cursor: pointer;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            font-size: 16px;
+            color: var(--text);
+            transition: all 0.15s;
+        }
+        .icon-btn:hover { background: var(--bg); }
+
+        /* ==================== Floating suggestion tooltip (click a highlight) ==================== */
+        .sugg-tooltip {
+            position: fixed;
+            z-index: 500;
+            background: var(--surface);
+            border: 1px solid var(--border);
+            border-radius: 10px;
+            box-shadow: var(--shadow-lg);
+            padding: 14px;
+            width: 280px;
+            font-size: 13px;
+            animation: fadeIn 0.15s ease forwards;
+        }
+        .sugg-tooltip .suggestion-type { margin-bottom: 8px; }
+        .sugg-tooltip .tooltip-actions { display: flex; flex-wrap: wrap; gap: 6px; margin-top: 10px; }
+        .sugg-tooltip .btn { padding: 5px 12px; font-size: 12px; }
+        .sugg-tooltip .btn-dict { background: var(--bg); color: var(--text-secondary); border: 1px solid var(--border); }
+        .sugg-tooltip .btn-dict:hover { background: var(--border); }
+        .sugg-tooltip .tooltip-close {
+            position: absolute; top: 8px; right: 8px; border: none; background: transparent;
+            cursor: pointer; color: var(--text-secondary); font-size: 14px; width: 22px; height: 22px;
+        }
+
+        /* ==================== Synonym popover (double-click a word) ==================== */
+        .synonym-popover {
+            position: fixed;
+            z-index: 500;
+            background: var(--surface);
+            border: 1px solid var(--border);
+            border-radius: 10px;
+            box-shadow: var(--shadow-lg);
+            padding: 12px;
+            max-width: 260px;
+            animation: fadeIn 0.15s ease forwards;
+        }
+        .synonym-popover .synonym-title { font-size: 11px; font-weight: 700; text-transform: uppercase; letter-spacing: 0.5px; color: var(--text-secondary); margin-bottom: 8px; }
+        .synonym-chips { display: flex; flex-wrap: wrap; gap: 6px; }
+        .synonym-chip {
+            padding: 5px 10px; border-radius: 14px; background: var(--primary-light); color: var(--primary);
+            font-size: 12px; font-weight: 600; cursor: pointer; border: none; font-family: inherit;
+        }
+        .synonym-chip:hover { filter: brightness(0.95); }
+        .synonym-empty { font-size: 12px; color: var(--text-secondary); }
+
+        .highlight-dictionary-hint { text-decoration: underline dotted; text-underline-offset: 3px; }
+
+        /* ==================== Apply-All diff modal ==================== */
+        .modal-overlay {
+            position: fixed; inset: 0; background: rgba(0,0,0,0.45); z-index: 600;
+            display: flex; align-items: center; justify-content: center; padding: 24px;
+        }
+        .modal {
+            background: var(--surface); border-radius: 14px; max-width: 640px; width: 100%;
+            max-height: 80vh; display: flex; flex-direction: column; box-shadow: var(--shadow-lg);
+        }
+        .modal-header { padding: 18px 22px; border-bottom: 1px solid var(--border); display: flex; align-items: center; justify-content: space-between; }
+        .modal-header h3 { font-size: 16px; font-weight: 700; }
+        .modal-body { padding: 18px 22px; overflow-y: auto; line-height: 1.9; font-size: 15px; white-space: pre-wrap; }
+        .modal-footer { padding: 14px 22px; border-top: 1px solid var(--border); display: flex; justify-content: flex-end; gap: 10px; }
+        .diff-del { color: var(--error); text-decoration: line-through; opacity: 0.75; background: var(--error-light); border-radius: 2px; }
+        .diff-add { color: var(--success); font-weight: 600; background: var(--success-light); border-radius: 2px; }
+        .modal-note { font-size: 12px; color: var(--text-secondary); padding: 0 22px 4px; }
+
+        /* ==================== Auth screen ==================== */
+        .auth-screen {
+            position: fixed; inset: 0; background: var(--bg); z-index: 1000;
+            display: flex; align-items: center; justify-content: center; padding: 24px;
+        }
+        .auth-card {
+            background: var(--surface); border: 1px solid var(--border); border-radius: 14px;
+            padding: 32px; width: 100%; max-width: 380px; box-shadow: var(--shadow-lg);
+        }
+        .auth-card .logo { justify-content: center; margin-bottom: 6px; }
+        .auth-subtitle { text-align: center; font-size: 13px; color: var(--text-secondary); margin-bottom: 22px; }
+        .auth-field { margin-bottom: 14px; }
+        .auth-field label { display: block; font-size: 12px; font-weight: 600; color: var(--text-secondary); margin-bottom: 5px; }
+        .auth-field input {
+            width: 100%; padding: 10px 12px; border: 1px solid var(--border); border-radius: 8px;
+            font-family: inherit; font-size: 14px; background: var(--bg); color: var(--text);
+        }
+        .auth-field input:focus-visible { outline: 2px solid var(--primary); outline-offset: 1px; }
+        .auth-submit { width: 100%; justify-content: center; padding: 10px; font-size: 14px; margin-top: 4px; }
+        .auth-toggle { text-align: center; margin-top: 16px; font-size: 13px; color: var(--text-secondary); }
+        .auth-toggle button { background: none; border: none; color: var(--primary); font-weight: 600; cursor: pointer; font-family: inherit; font-size: 13px; }
+        .auth-error { background: var(--error-light); color: var(--error); padding: 8px 12px; border-radius: 8px; font-size: 12px; margin-bottom: 14px; }
+        .auth-success { background: var(--success-light); color: var(--success); padding: 8px 12px; border-radius: 8px; font-size: 12px; margin-bottom: 14px; }
+        .auth-setup-notice { background: var(--warning-light); color: var(--warning); padding: 10px 12px; border-radius: 8px; font-size: 12px; margin-bottom: 16px; line-height: 1.5; }
+        .sync-pill { font-size: 11px; color: var(--text-secondary); display: flex; align-items: center; gap: 4px; }
+
+        .header {
+            background: var(--surface);
+            border-bottom: 1px solid var(--border);
+            padding: 0 24px;
+            height: 60px;
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+            position: sticky;
+            top: 0;
+            z-index: 100;
+            box-shadow: 0 1px 4px rgba(0,0,0,0.04);
+        }
+
+        .logo {
+            display: flex;
+            align-items: center;
+            gap: 10px;
+            font-size: 20px;
+            font-weight: 700;
+            color: var(--primary);
+        }
+
+        .logo-icon {
+            width: 36px;
+            height: 36px;
+            background: linear-gradient(135deg, #1a73e8, #4285f4);
+            border-radius: 10px;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            color: white;
+            font-size: 18px;
+        }
+
+        .header-actions {
+            display: flex;
+            align-items: center;
+            gap: 12px;
+        }
+
+        .goal-selector {
+            display: flex;
+            align-items: center;
+            gap: 8px;
+            padding: 6px 12px;
+            border: 1px solid var(--border);
+            border-radius: 8px;
+            background: var(--surface);
+            cursor: pointer;
+            font-size: 13px;
+            color: var(--text-secondary);
+        }
+
+        .goal-selector select {
+            border: none;
+            background: transparent;
+            font-family: inherit;
+            font-size: 13px;
+            color: var(--text);
+            cursor: pointer;
+            outline: none;
+            font-weight: 500;
+        }
+
+        .btn {
+            padding: 8px 20px;
+            border: none;
+            border-radius: 8px;
+            font-family: inherit;
+            font-size: 13px;
+            font-weight: 600;
+            cursor: pointer;
+            transition: all 0.2s;
+            display: flex;
+            align-items: center;
+            gap: 6px;
+        }
+
+        .btn-primary { background: var(--primary); color: white; }
+        .btn-primary:hover { background: #1557b0; transform: translateY(-1px); box-shadow: 0 2px 8px rgba(26,115,232,0.3); }
+        .btn-secondary { background: var(--bg); color: var(--text); border: 1px solid var(--border); }
+        .btn-secondary:hover { background: var(--border); }
+        .btn:disabled { opacity: 0.6; cursor: not-allowed; transform: none; }
+
+        .main-container {
+            display: flex;
+            height: calc(100vh - 60px);
+        }
+
+        .editor-panel {
+            flex: 1;
+            display: flex;
+            flex-direction: column;
+            min-width: 0;
+        }
+
+        .editor-toolbar {
+            display: flex;
+            align-items: center;
+            padding: 8px 24px;
+            background: var(--surface);
+            border-bottom: 1px solid var(--border);
+            gap: 4px;
+        }
+
+        .toolbar-btn {
+            width: 36px;
+            height: 36px;
+            border: none;
+            background: transparent;
+            border-radius: 6px;
+            cursor: pointer;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            color: var(--text-secondary);
+            font-size: 14px;
+            transition: all 0.15s;
+        }
+
+        .toolbar-btn:hover { background: var(--bg); color: var(--text); }
+        .toolbar-btn.active { background: var(--primary-light); color: var(--primary); }
+        .toolbar-divider { width: 1px; height: 24px; background: var(--border); margin: 0 4px; }
+
+        .editor-wrapper {
+            flex: 1;
+            padding: 24px;
+            overflow-y: auto;
+            position: relative;
+        }
+
+        #editor {
+            max-width: 800px;
+            margin: 0 auto;
+            width: 100%;
+            min-height: 100%;
+            outline: none;
+            font-size: 16px;
+            line-height: 1.8;
+            color: var(--text);
+            caret-color: var(--primary);
+            white-space: pre-wrap;
+        }
+
+        #editor:empty::before {
+            content: "Start typing or paste your text here...";
+            color: #9aa0a6;
+            pointer-events: none;
+        }
+
+        .highlight-spelling { background: linear-gradient(to bottom, transparent 60%, #ff6b6b 60%); cursor: pointer; border-radius: 2px; }
+        .highlight-grammar { background: linear-gradient(to bottom, transparent 60%, #ffa726 60%); cursor: pointer; border-radius: 2px; }
+        .highlight-style { background: linear-gradient(to bottom, transparent 60%, #42a5f5 60%); cursor: pointer; border-radius: 2px; }
+        .highlight-clarity { background: linear-gradient(to bottom, transparent 60%, #ab47bc 60%); cursor: pointer; border-radius: 2px; }
+
+        .stats-bar {
+            display: flex;
+            align-items: center;
+            padding: 8px 24px;
+            background: var(--surface);
+            border-top: 1px solid var(--border);
+            gap: 24px;
+            font-size: 12px;
+            color: var(--text-secondary);
+        }
+
+        .stat-item { display: flex; align-items: center; gap: 4px; }
+        .stat-item .dot { width: 8px; height: 8px; border-radius: 50%; }
+        .dot-error { background: var(--error); }
+        .dot-warning { background: var(--warning); }
+        .dot-info { background: var(--info); }
+
+        .sidebar {
+            width: 380px;
+            background: var(--surface);
+            border-left: 1px solid var(--border);
+            display: flex;
+            flex-direction: column;
+            overflow: hidden;
+        }
+
+        .sidebar-header {
+            padding: 16px 20px;
+            border-bottom: 1px solid var(--border);
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+        }
+
+        .sidebar-header h3 { font-size: 15px; font-weight: 600; }
+
+        .score-badge {
+            display: flex;
+            align-items: center;
+            gap: 8px;
+        }
+
+        .score-circle {
+            width: 40px;
+            height: 40px;
+            border-radius: 50%;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            font-size: 14px;
+            font-weight: 700;
+            color: white;
+            transition: all 0.3s;
+        }
+
+        .score-excellent { background: linear-gradient(135deg, #0d904f, #34a853); }
+        .score-good { background: linear-gradient(135deg, #e37400, #fbbc04); }
+        .score-poor { background: linear-gradient(135deg, #d93025, #ea4335); }
+
+        .sidebar-tabs {
+            display: flex;
+            border-bottom: 1px solid var(--border);
+        }
+
+        .sidebar-tab {
+            flex: 1;
+            padding: 12px;
+            border: none;
+            background: transparent;
+            font-family: inherit;
+            font-size: 13px;
+            font-weight: 500;
+            color: var(--text-secondary);
+            cursor: pointer;
+            position: relative;
+            transition: all 0.2s;
+        }
+
+        .sidebar-tab.active { color: var(--primary); }
+        .sidebar-tab.active::after {
+            content: '';
+            position: absolute;
+            bottom: 0;
+            left: 20%;
+            right: 20%;
+            height: 2px;
+            background: var(--primary);
+            border-radius: 1px;
+        }
+
+        .tab-count {
+            display: inline-flex;
+            align-items: center;
+            justify-content: center;
+            min-width: 18px;
+            height: 18px;
+            border-radius: 9px;
+            font-size: 11px;
+            font-weight: 600;
+            margin-left: 4px;
+            padding: 0 5px;
+        }
+
+        .tab-count-error { background: var(--error-light); color: var(--error); }
+        .tab-count-warning { background: var(--warning-light); color: var(--warning); }
+        .tab-count-info { background: var(--info-light); color: var(--info); }
+
+        .sidebar-content {
+            flex: 1;
+            overflow-y: auto;
+            padding: 8px;
+        }
+
+        .suggestion-card {
+            padding: 14px 16px;
+            border-radius: 10px;
+            margin-bottom: 8px;
+            cursor: pointer;
+            transition: all 0.2s;
+            border: 1px solid transparent;
+            animation: fadeIn 0.3s ease forwards;
+        }
+
+        .suggestion-card:hover { box-shadow: var(--shadow); border-color: var(--border); }
+        .suggestion-card:focus-visible { box-shadow: var(--shadow); border-color: var(--primary); outline: 2px solid var(--primary); outline-offset: 1px; }
+        .card-error { background: var(--error-light); }
+        .card-warning { background: var(--warning-light); }
+        .card-info { background: var(--info-light); }
+        .card-success { background: var(--success-light); }
+
+        .suggestion-type {
+            display: flex;
+            align-items: center;
+            gap: 6px;
+            font-size: 11px;
+            font-weight: 600;
+            text-transform: uppercase;
+            letter-spacing: 0.5px;
+            margin-bottom: 6px;
+        }
+
+        .type-error { color: var(--error); }
+        .type-warning { color: var(--warning); }
+        .type-info { color: var(--info); }
+        .type-success { color: var(--success); }
+
+        .suggestion-original { font-size: 14px; color: var(--text); margin-bottom: 4px; text-decoration: line-through; opacity: 0.7; }
+        .suggestion-fix { font-size: 14px; font-weight: 500; color: var(--text); margin-bottom: 4px; }
+        .suggestion-explanation { font-size: 12px; color: var(--text-secondary); line-height: 1.5; }
+
+        .suggestion-actions { display: flex; gap: 8px; margin-top: 10px; }
+        .suggestion-actions .btn { padding: 5px 14px; font-size: 12px; }
+
+        .empty-state {
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            justify-content: center;
+            padding: 60px 20px;
+            text-align: center;
+        }
+
+        .empty-state-icon {
+            width: 80px;
+            height: 80px;
+            background: var(--primary-light);
+            border-radius: 20px;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            font-size: 36px;
+            margin-bottom: 16px;
+        }
+
+        .empty-state h4 { font-size: 16px; font-weight: 600; margin-bottom: 6px; }
+        .empty-state p { font-size: 13px; color: var(--text-secondary); max-width: 260px; }
+
+        .readability-panel { padding: 16px; }
+        .readability-metric { display: flex; align-items: center; justify-content: space-between; padding: 12px 0; border-bottom: 1px solid var(--border); }
+        .readability-metric:last-child { border-bottom: none; }
+        .metric-label { font-size: 13px; color: var(--text-secondary); }
+        .metric-value { font-size: 14px; font-weight: 600; }
+        .metric-bar { width: 100%; height: 6px; background: var(--bg); border-radius: 3px; margin-top: 8px; overflow: hidden; }
+        .metric-bar-fill { height: 100%; border-radius: 3px; transition: width 0.5s ease; }
+
+        .loading-state {
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            justify-content: center;
+            padding: 40px 20px;
+            text-align: center;
+        }
+
+        .loading-spinner {
+            width: 32px;
+            height: 32px;
+            border: 3px solid var(--primary-light);
+            border-top-color: var(--primary);
+            border-radius: 50%;
+            animation: spin 0.8s linear infinite;
+            margin-bottom: 12px;
+        }
+
+        @keyframes spin { to { transform: rotate(360deg); } }
+        @keyframes fadeIn { from { opacity: 0; transform: translateY(8px); } to { opacity: 1; transform: translateY(0); } }
+
+        ::-webkit-scrollbar { width: 6px; }
+        ::-webkit-scrollbar-track { background: transparent; }
+        ::-webkit-scrollbar-thumb { background: var(--border); border-radius: 3px; }
+        ::-webkit-scrollbar-thumb:hover { background: #9aa0a6; }
+
+        @media (max-width: 900px) {
+            .sidebar { display: none; }
+            .main-container { flex-direction: column; }
+        }
+    </style>
+</head>
+<body>
+
+    <!-- ==================== Cloud sync (Supabase) ====================
+         Fill in your own project's URL + anon key below. Both come from
+         Supabase → Project Settings → API. The anon key is safe to expose
+         in client-side code — it only grants what your Row Level Security
+         policies allow, which (per the setup guide) is "a user can only
+         ever read/write their own rows." -->
+    <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+    <script>
+        const SUPABASE_URL = 'YOUR_SUPABASE_URL';
+        const SUPABASE_ANON_KEY = 'YOUR_SUPABASE_ANON_KEY';
+        const supabaseConfigured = !SUPABASE_URL.includes('YOUR_') && !SUPABASE_ANON_KEY.includes('YOUR_');
+        const supabaseClient = supabaseConfigured
+            ? window.supabase.createClient(SUPABASE_URL, SUPABASE_ANON_KEY)
+            : null;
+    </script>
+
+    <div class="auth-screen" id="authScreen">
+        <div class="auth-card">
+            <div class="logo">
+                <div class="logo-icon">✍</div>
+                <span>WriteAssist Pro</span>
+            </div>
+            <div class="auth-subtitle">Your writing, synced across your own devices.</div>
+
+            <div id="authSetupNotice" style="display:none;" class="auth-setup-notice">
+                ⚠️ Cloud sync isn't configured yet. Add your Supabase URL and anon key at the top of the &lt;body&gt; script, then reload. Until then you can still use the app locally — see "Continue without an account" below.
+            </div>
+            <div id="authError" class="auth-error" style="display:none;"></div>
+            <div id="authSuccess" class="auth-success" style="display:none;"></div>
+
+            <form id="authForm" onsubmit="handleAuthSubmit(event)">
+                <div class="auth-field">
+                    <label for="authEmail">Email</label>
+                    <input type="email" id="authEmail" required autocomplete="email">
+                </div>
+                <div class="auth-field">
+                    <label for="authPassword">Password</label>
+                    <input type="password" id="authPassword" required autocomplete="current-password" minlength="6">
+                </div>
+                <button type="submit" class="btn btn-primary auth-submit" id="authSubmitBtn">Log In</button>
+            </form>
+            <div class="auth-toggle">
+                <span id="authToggleText">Don't have an account?</span>
+                <button type="button" onclick="toggleAuthMode()" id="authToggleBtn">Sign up</button>
+            </div>
+            <div class="auth-toggle">
+                <button type="button" onclick="continueWithoutAccount()">Continue without an account (local-only)</button>
+            </div>
+        </div>
+    </div>
+
+    <header class="header">
+        <div class="logo">
+            <div class="logo-icon">✍</div>
+            <span>WriteAssist Pro</span>
+        </div>
+        <div class="header-actions">
+            <div class="status-pill status-live" id="statusPill" role="status" aria-live="polite">
+                <span class="status-dot"></span><span id="statusPillText">Live grammar check</span>
+            </div>
+            <div class="goal-selector">
+                <span aria-hidden="true">🎯</span>
+                <label for="writingGoal" style="position:absolute;width:1px;height:1px;overflow:hidden;clip:rect(0,0,0,0);">Writing goal</label>
+                <select id="writingGoal" onchange="onGoalChange()">
+                    <option value="general">General</option>
+                    <option value="formal">Formal</option>
+                    <option value="casual">Casual</option>
+                    <option value="academic">Academic</option>
+                    <option value="business">Business</option>
+                    <option value="creative">Creative</option>
+                </select>
+            </div>
+            <button class="icon-btn" id="themeToggle" onclick="toggleTheme()" title="Toggle dark mode" aria-label="Toggle dark mode">🌙</button>
+            <div class="sync-pill" id="syncPill" title="Cloud sync status"></div>
+            <button class="btn btn-secondary" id="logoutBtn" onclick="handleLogout()" style="display:none;">Log Out</button>
+            <button class="btn btn-secondary" onclick="loadSample()">🎲 Sample</button>
+            <button class="btn btn-secondary" onclick="openApplyAllModal()">✅ Apply All</button>
+            <button class="btn btn-secondary" onclick="exportText()">⬇ Export</button>
+            <button class="btn btn-secondary" onclick="clearText()">🗑 Clear</button>
+            <button class="btn btn-primary" id="analyzeBtn" onclick="analyzeText()">✨ Analyze</button>
+        </div>
+    </header>
+
+    <div class="main-container">
+        <div class="editor-panel">
+            <div class="editor-toolbar">
+                <span style="font-size:12px; color: var(--text-secondary); padding: 0 8px;">
+                    Rich-text formatting (bold/italic/lists) has been removed — combining it with live inline grammar highlighting corrupted suggestion positions. Plain-text editing keeps highlighting reliable.
+                </span>
+            </div>
+            <div class="editor-wrapper">
+                <div id="editor" contenteditable="true" spellcheck="false"></div>
+            </div>
+            <div class="stats-bar">
+                <div class="stat-item"><span class="dot dot-error"></span><span id="errorCount">0</span> Errors</div>
+                <div class="stat-item"><span class="dot dot-warning"></span><span id="warningCount">0</span> Warnings</div>
+                <div class="stat-item"><span class="dot dot-info"></span><span id="infoCount">0</span> Suggestions</div>
+                <div class="stat-item" style="margin-left: auto;">📝 <span id="wordCount">0</span> words</div>
+                <div class="stat-item">⏱ <span id="readTime">0</span> min read</div>
+                <div class="stat-item">📊 Score: <span id="overallScore">--</span></div>
+            </div>
+        </div>
+
+        <div class="sidebar">
+            <div class="sidebar-header">
+                <h3>Writing Feedback</h3>
+                <div class="score-badge">
+                    <div class="score-circle score-excellent" id="scoreCircle">--</div>
+                </div>
+            </div>
+            <div class="sidebar-tabs">
+                <button class="sidebar-tab active" onclick="switchTab('all', this)">All <span class="tab-count tab-count-info" id="allCount">0</span></button>
+                <button class="sidebar-tab" onclick="switchTab('errors', this)">Errors <span class="tab-count tab-count-error" id="errorsCount">0</span></button>
+                <button class="sidebar-tab" onclick="switchTab('style', this)">Style <span class="tab-count tab-count-warning" id="styleCount">0</span></button>
+                <button class="sidebar-tab" onclick="switchTab('readability', this)">Readability</button>
+            </div>
+            <div class="sidebar-content" id="sidebarContent">
+                <div class="empty-state">
+                    <div class="empty-state-icon">📝</div>
+                    <h4>Start Writing</h4>
+                    <p>Type or paste your text in the editor and click "Analyze" to get instant feedback.</p>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <script>
+        // ==================== STATE & CONFIG ====================
+        const editor = document.getElementById('editor');
+        const sidebarContent = document.getElementById('sidebarContent');
+        const analyzeBtn = document.getElementById('analyzeBtn');
+        const statusPill = document.getElementById('statusPill');
+        const statusPillText = document.getElementById('statusPillText');
+        const goalSelect = document.getElementById('writingGoal');
+        let suggestions = [];
+        let currentTab = 'all';
+        let isAnalyzing = false;
+        let debounceTimer = null;
+        let autosaveTimer = null;
+        let lastCheckedText = '';
+
+        // Rate-limit backoff state: after repeated API failures, stop hammering
+        // the free LanguageTool endpoint and fall back to local-only checking
+        // for a cooldown window, instead of silently retrying on every keystroke.
+        let apiFailureCount = 0;
+        let apiBackoffUntil = 0;
+
+        // Persistent custom dictionary — words the user has told the app to
+        // stop flagging. Unlike a session-only Set, this survives reloads.
+        let customDictionary = new Set();
+        try {
+            const savedDict = JSON.parse(localStorage.getItem('writeassist_dictionary') || '[]');
+            customDictionary = new Set(savedDict);
+        } catch (e) { customDictionary = new Set(); }
+
+        function saveDictionary() {
+            try { localStorage.setItem('writeassist_dictionary', JSON.stringify(Array.from(customDictionary))); } catch (e) {}
+        }
+
+        const SAMPLE_TEXT = "Their are several reasons why this project have been delayed. Firstly, the team was'nt able too finalize the requirements on time, which effected every other milestone. Secondly, due to the fact that the client kept changing there mind, we had to redo alot of the work. In order to avoid this in the future, we should make sure that requirements are locked before development begins.";
+
+        // ==================== AUTH & CLOUD SYNC STATE ====================
+        let authMode = 'login'; // 'login' | 'signup'
+        let currentUser = null;
+        let cloudSyncEnabled = false; // false = local-only (no account, or logged out)
+
+        function setSyncPill(state) {
+            const pill = document.getElementById('syncPill');
+            if (!cloudSyncEnabled) { pill.textContent = '💾 Local-only'; return; }
+            if (state === 'saving') pill.textContent = '🔄 Saving…';
+            else if (state === 'error') pill.textContent = '⚠️ Sync error (saved locally)';
+            else pill.textContent = '☁️ Synced';
+        }
+
+        function toggleAuthMode() {
+            authMode = authMode === 'login' ? 'signup' : 'login';
+            document.getElementById('authSubmitBtn').textContent = authMode === 'login' ? 'Log In' : 'Sign Up';
+            document.getElementById('authToggleText').textContent = authMode === 'login' ? "Don't have an account?" : 'Already have an account?';
+            document.getElementById('authToggleBtn').textContent = authMode === 'login' ? 'Sign up' : 'Log in';
+            document.getElementById('authError').style.display = 'none';
+            document.getElementById('authSuccess').style.display = 'none';
+        }
+
+        async function handleAuthSubmit(e) {
+            e.preventDefault();
+            const errorBox = document.getElementById('authError');
+            const successBox = document.getElementById('authSuccess');
+            errorBox.style.display = 'none';
+            successBox.style.display = 'none';
+
+            if (!supabaseConfigured) {
+                errorBox.textContent = 'Cloud sync isn\'t configured yet — use "Continue without an account" below, or add your Supabase keys first.';
+                errorBox.style.display = 'block';
+                return;
+            }
+
+            const email = document.getElementById('authEmail').value.trim();
+            const password = document.getElementById('authPassword').value;
+            const submitBtn = document.getElementById('authSubmitBtn');
+            submitBtn.disabled = true;
+
+            try {
+                if (authMode === 'login') {
+                    const { data, error } = await supabaseClient.auth.signInWithPassword({ email, password });
+                    if (error) throw error;
+                    currentUser = data.user;
+                    await onLoginSuccess();
+                } else {
+                    const { data, error } = await supabaseClient.auth.signUp({ email, password });
+                    if (error) throw error;
+                    if (data.session) {
+                        currentUser = data.user;
+                        await onLoginSuccess();
+                    } else {
+                        // Email confirmation is on by default in Supabase — the
+                        // user needs to click the link in their inbox first.
+                        successBox.textContent = 'Account created! Check your email to confirm, then log in.';
+                        successBox.style.display = 'block';
+                        toggleAuthMode();
+                    }
+                }
+            } catch (err) {
+                errorBox.textContent = err.message || 'Something went wrong. Please try again.';
+                errorBox.style.display = 'block';
+            } finally {
+                submitBtn.disabled = false;
+            }
+        }
+
+        function continueWithoutAccount() {
+            cloudSyncEnabled = false;
+            document.getElementById('authScreen').style.display = 'none';
+            document.getElementById('logoutBtn').style.display = 'none';
+            restoreDraft(); // local-only path
+            setSyncPill();
+            editor.focus();
+        }
+
+        async function onLoginSuccess() {
+            cloudSyncEnabled = true;
+            document.getElementById('authScreen').style.display = 'none';
+            document.getElementById('logoutBtn').style.display = 'inline-flex';
+            await loadUserData();
+            setSyncPill('synced');
+            editor.focus();
+        }
+
+        async function handleLogout() {
+            if (supabaseClient) await supabaseClient.auth.signOut();
+            currentUser = null;
+            cloudSyncEnabled = false;
+            editor.innerText = '';
+            suggestions = [];
+            resetUI();
+            document.getElementById('logoutBtn').style.display = 'none';
+            document.getElementById('authScreen').style.display = 'flex';
+            document.getElementById('authEmail').value = '';
+            document.getElementById('authPassword').value = '';
+        }
+
+        // Runs on page load: restores an existing Supabase session so the
+        // user isn't asked to log in again on every visit, the same way
+        // Gmail/Docs keep you signed in.
+        async function initAuth() {
+            if (!supabaseConfigured) {
+                document.getElementById('authSetupNotice').style.display = 'block';
+                return;
+            }
+            const { data } = await supabaseClient.auth.getSession();
+            if (data.session) {
+                currentUser = data.session.user;
+                await onLoginSuccess();
+            }
+        }
+
+        // ==================== CLOUD DATA (Supabase) ====================
+        async function loadUserData() {
+            try {
+                const { data: draftRow } = await supabaseClient
+                    .from('drafts')
+                    .select('*')
+                    .eq('user_id', currentUser.id)
+                    .maybeSingle();
+
+                if (draftRow) {
+                    editor.innerText = draftRow.content || '';
+                    applyTheme(draftRow.theme === 'dark' ? 'dark' : 'light');
+                    goalSelect.value = draftRow.goal || 'general';
+                } else {
+                    // First login ever — create their row.
+                    await supabaseClient.from('drafts').insert({
+                        user_id: currentUser.id, content: '', goal: 'general', theme: 'light'
+                    });
+                    applyTheme('light');
+                }
+
+                const { data: dictRows } = await supabaseClient
+                    .from('dictionary_words')
+                    .select('word')
+                    .eq('user_id', currentUser.id);
+                customDictionary = new Set((dictRows || []).map(r => r.word));
+
+                updateStats();
+            } catch (err) {
+                console.warn('Cloud load failed, falling back to local draft:', err);
+                setSyncPill('error');
+                restoreDraft();
+            }
+        }
+
+        async function saveToCloud() {
+            if (!cloudSyncEnabled || !currentUser) return;
+            setSyncPill('saving');
+            try {
+                const theme = document.documentElement.getAttribute('data-theme') === 'dark' ? 'dark' : 'light';
+                const { error } = await supabaseClient.from('drafts').upsert({
+                    user_id: currentUser.id,
+                    content: getPlainText(),
+                    goal: goalSelect.value,
+                    theme: theme,
+                    updated_at: new Date().toISOString()
+                });
+                if (error) throw error;
+                setSyncPill('synced');
+            } catch (err) {
+                console.warn('Cloud save failed, kept local copy only:', err);
+                setSyncPill('error');
+            }
+        }
+
+        // ==================== THEME ====================
+        function applyTheme(theme) {
+            document.documentElement.setAttribute('data-theme', theme);
+            document.getElementById('themeToggle').textContent = theme === 'dark' ? '☀️' : '🌙';
+            localStorage.setItem('writeassist_theme', theme);
+        }
+        function toggleTheme() {
+            const current = document.documentElement.getAttribute('data-theme') === 'dark' ? 'dark' : 'light';
+            applyTheme(current === 'dark' ? 'light' : 'dark');
+            scheduleAutosave();
+        }
+
+        // ==================== AUTOSAVE / RESTORE ====================
+        // Always writes to localStorage immediately (survives even if you're
+        // offline or not logged in). If cloud sync is on, also debounces an
+        // upsert to Supabase so the same draft shows up on your other devices.
+        function scheduleAutosave() {
+            clearTimeout(autosaveTimer);
+            try {
+                localStorage.setItem('writeassist_draft', getPlainText());
+                localStorage.setItem('writeassist_goal', goalSelect.value);
+            } catch (e) { /* storage unavailable — fail silently, this is a convenience layer */ }
+
+            if (cloudSyncEnabled) {
+                autosaveTimer = setTimeout(saveToCloud, 900);
+            }
+        }
+
+        function restoreDraft() {
+            try {
+                const savedTheme = localStorage.getItem('writeassist_theme');
+                applyTheme(savedTheme === 'dark' ? 'dark' : 'light');
+
+                const savedGoal = localStorage.getItem('writeassist_goal');
+                if (savedGoal) goalSelect.value = savedGoal;
+
+                const draft = localStorage.getItem('writeassist_draft');
+                if (draft) {
+                    editor.innerText = draft;
+                    updateStats();
+                }
+            } catch (e) {
+                applyTheme('light');
+            }
+        }
+
+        function loadSample() {
+            editor.innerText = SAMPLE_TEXT;
+            suggestions = [];
+            lastCheckedText = '';
+            updateStats();
+            scheduleAutosave();
+            editor.focus();
+            analyzeText();
+        }
+
+        // ==================== WRITING GOAL (now actually wired in) ====================
+        function onGoalChange() {
+            scheduleAutosave();
+            // Re-run analysis so the goal takes effect immediately rather than
+            // silently doing nothing until the next edit (the bug found in the
+            // original app, where this selector had no effect on output at all).
+            lastCheckedText = '';
+            analyzeText();
+        }
+
+        function getGoalSettings() {
+            const goal = goalSelect.value;
+            // Formal registers get the stricter LanguageTool pass and the full
+            // style-simplification ruleset; casual/creative registers relax both,
+            // since "wordy" phrasing and contractions are often intentional there.
+            const strict = goal === 'formal' || goal === 'academic' || goal === 'business';
+            const relaxed = goal === 'casual' || goal === 'creative';
+            return {
+                goal,
+                ltLevel: strict ? 'picky' : 'default',
+                applyStylePatterns: !relaxed,
+                flagVagueWords: strict
+            };
+        }
+
+        // ==================== EXPORT ====================
+        function exportText() {
+            const text = getPlainText();
+            if (!text.trim()) return;
+            const blob = new Blob([text], { type: 'text/plain;charset=utf-8' });
+            const url = URL.createObjectURL(blob);
+            const a = document.createElement('a');
+            a.href = url;
+            a.download = 'document.txt';
+            document.body.appendChild(a);
+            a.click();
+            document.body.removeChild(a);
+            URL.revokeObjectURL(url);
+        }
+
+        // ==================== STATUS INDICATOR ====================
+        function setStatus(mode) {
+            if (mode === 'local') {
+                statusPill.classList.add('status-local');
+                statusPillText.textContent = 'Local-only mode (rate limited)';
+            } else {
+                statusPill.classList.remove('status-local');
+                statusPillText.textContent = 'Live grammar check';
+            }
+        }
+
+        // ==================== CORE FUNCTIONS ====================
+        function getPlainText() {
+            return editor.innerText || '';
+        }
+
+        async function analyzeText() {
+            const text = getPlainText();
+            if (!text.trim()) {
+                resetUI();
+                return;
+            }
+
+            if (text === lastCheckedText) return; // Skip if unchanged
+            
+            isAnalyzing = true;
+            analyzeBtn.disabled = true;
+            analyzeBtn.innerHTML = '⏳ Checking...';
+            showLoadingState();
+
+            const goalSettings = getGoalSettings();
+            const now = Date.now();
+
+            if (now < apiBackoffUntil) {
+                // Still cooling down from repeated failures/rate limits — don't
+                // hammer the API again, go straight to local checking.
+                setStatus('local');
+                suggestions = runLocalChecks(text, goalSettings);
+            } else {
+                try {
+                    const apiResults = await fetchLanguageTool(text, goalSettings);
+                    suggestions = processAPIResults(apiResults, text);
+                    apiFailureCount = 0;
+                    setStatus('live');
+                } catch (error) {
+                    console.warn('API failed, using local fallback:', error);
+                    apiFailureCount++;
+                    // Exponential backoff: 10s, 20s, 40s... capped at 5 minutes,
+                    // so a flaky connection doesn't retry every single keystroke.
+                    const backoffMs = Math.min(300000, 10000 * Math.pow(2, apiFailureCount - 1));
+                    apiBackoffUntil = Date.now() + backoffMs;
+                    setStatus('local');
+                    suggestions = runLocalChecks(text, goalSettings);
+                }
+            }
+
+            // Deduplicate & sort
+            suggestions.sort((a, b) => a.start - b.start || (b.end - b.start) - (a.end - a.start));
+            const filtered = [];
+            let lastEnd = -1;
+            for (const s of suggestions) {
+                if (s.start >= lastEnd) {
+                    filtered.push(s);
+                    lastEnd = s.end;
+                }
+            }
+            suggestions = filtered;
+            lastCheckedText = text;
+
+            updateHighlights();
+            updateSidebar();
+            updateStats();
+            
+            isAnalyzing = false;
+            analyzeBtn.disabled = false;
+            analyzeBtn.innerHTML = '✨ Analyze';
+        }
+
+        async function fetchLanguageTool(text, goalSettings) {
+            const level = goalSettings ? goalSettings.ltLevel : 'default';
+            const response = await fetch('https://api.languagetool.org/v2/check', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
+                body: new URLSearchParams({
+                    text: text,
+                    language: 'en-US',
+                    enabledOnly: 'false',
+                    level: level
+                })
+            });
+
+            if (response.status === 429) throw new Error('Rate limited');
+            if (!response.ok) throw new Error('API request failed');
+            return await response.json();
+        }
+
+        function processAPIResults(data, text) {
+            if (!data.matches) return [];
+            
+            return data.matches
+                .map(match => {
+                    const type = match.category.id === 'TYPOS' || match.category.id === 'SPELLING' ? 'error' :
+                                 match.category.id === 'GRAMMAR' ? 'error' :
+                                 match.category.id === 'STYLE' ? 'info' : 'warning';
+                    
+                    const fix = match.replacements && match.replacements.length > 0 ? match.replacements[0].value : null;
+                    
+                    return {
+                        start: match.offset,
+                        end: match.offset + match.length,
+                        original: text.substring(match.offset, match.offset + match.length),
+                        fix: fix,
+                        message: match.message,
+                        type: type,
+                        context: match.context
+                    };
+                })
+                .filter(s => !(s.type === 'error' && customDictionary.has(s.original.toLowerCase())));
+        }
+
+        // Local fallback for offline/rate-limited scenarios.
+        // goalSettings actually changes behavior now: formal/academic/business
+        // gets the full style-simplification pass plus vague-word flags;
+        // casual/creative skips both, since "informal" phrasing there is a
+        // choice, not an error.
+        function runLocalChecks(text, goalSettings) {
+            const settings = goalSettings || getGoalSettings();
+            const results = [];
+            const words = text.match(/\b[\w']+\b/g) || [];
+            
+            // Basic spelling — always runs, regardless of goal
+            words.forEach(word => {
+                const lower = word.toLowerCase();
+                if (misspellings[lower] && !customDictionary.has(lower)) {
+                    const regex = new RegExp(`\\b${word}\\b`, 'g');
+                    let match;
+                    while ((match = regex.exec(text)) !== null) {
+                        results.push({
+                            start: match.index,
+                            end: match.index + match[0].length,
+                            original: match[0],
+                            fix: misspellings[lower],
+                            message: `Did you mean "${misspellings[lower]}"?`,
+                            type: 'error'
+                        });
+                    }
+                }
+            });
+
+            // Style simplification — gated by writing goal
+            if (settings.applyStylePatterns) {
+                stylePatterns.forEach(rule => {
+                    if (rule.type === 'info' && rule.vague && !settings.flagVagueWords) return;
+                    let match;
+                    const regex = new RegExp(rule.pattern.source, rule.pattern.flags);
+                    while ((match = regex.exec(text)) !== null) {
+                        const fix = typeof rule.fix === 'function' ? rule.fix(...match) : rule.fix;
+                        results.push({
+                            start: match.index,
+                            end: match.index + match[0].length,
+                            original: match[0],
+                            fix: fix,
+                            message: rule.message,
+                            type: rule.type
+                        });
+                    }
+                });
+            }
+
+            return results;
+        }
+
+        function updateHighlights() {
+            const text = getPlainText();
+            if (suggestions.length === 0) {
+                editor.innerHTML = text.replace(/\n/g, '<br>');
+                return;
+            }
+
+            let html = '';
+            let lastIndex = 0;
+            for (let i = 0; i < suggestions.length; i++) {
+                const s = suggestions[i];
+                html += escapeHtml(text.slice(lastIndex, s.start));
+                const className = s.type === 'error' ? 'highlight-spelling' : 
+                                  s.type === 'warning' ? 'highlight-grammar' : 
+                                  s.type === 'style' ? 'highlight-style' : 'highlight-clarity';
+                html += `<span class="${className}" data-idx="${i}">${escapeHtml(s.original)}</span>`;
+                lastIndex = s.end;
+            }
+            html += escapeHtml(text.slice(lastIndex));
+            editor.innerHTML = html;
+        }
+
+        function escapeHtml(text) {
+            return text.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/\n/g, '<br>');
+        }
+
+        function updateSidebar() {
+            const counts = { error: 0, warning: 0, info: 0 };
+            suggestions.forEach(s => counts[s.type] = (counts[s.type] || 0) + 1);
+
+            document.getElementById('allCount').textContent = suggestions.length;
+            document.getElementById('errorsCount').textContent = counts.error || 0;
+            document.getElementById('styleCount').textContent = (counts.warning || 0) + (counts.info || 0);
+
+            if (currentTab === 'readability') {
+                renderReadabilityPanel();
+                return;
+            }
+
+            let filtered = suggestions;
+            if (currentTab === 'errors') filtered = suggestions.filter(s => s.type === 'error');
+            else if (currentTab === 'style') filtered = suggestions.filter(s => s.type === 'warning' || s.type === 'info');
+
+            if (filtered.length === 0) {
+                sidebarContent.innerHTML = `
+                    <div class="empty-state">
+                        <div class="empty-state-icon">✅</div>
+                        <h4>Great Writing!</h4>
+                        <p>No ${currentTab === 'all' ? 'issues' : currentTab} found in this category.</p>
+                    </div>`;
+                return;
+            }
+
+            sidebarContent.setAttribute('role', 'list');
+            sidebarContent.setAttribute('aria-label', `${filtered.length} writing suggestions`);
+            sidebarContent.innerHTML = filtered.map((s, i) => {
+                const realIdx = suggestions.indexOf(s);
+                const typeLabel = s.type === 'error' ? 'Grammar/Spelling' : s.type === 'warning' ? 'Style' : 'Clarity';
+                return `
+                <div class="suggestion-card card-${s.type}" onclick="focusSuggestion(${realIdx})"
+                     role="listitem" tabindex="0" aria-label="${typeLabel}: ${escapeHtml(s.message)}">
+                    <div class="suggestion-type type-${s.type}">
+                        ${s.type === 'error' ? '🔴 Grammar/Spelling' : s.type === 'warning' ? '🟡 Style' : '🔵 Clarity'}
+                    </div>
+                    ${s.fix ? `<div class="suggestion-original">${escapeHtml(s.original)}</div>
+                               <div class="suggestion-fix">${escapeHtml(s.fix)}</div>` : ''}
+                    <div class="suggestion-explanation">${s.message}</div>
+                    ${s.fix ? `<div class="suggestion-actions">
+                        <button class="btn btn-primary" onclick="event.stopPropagation(); applyFix(${realIdx})">Apply Fix</button>
+                        <button class="btn btn-secondary" onclick="event.stopPropagation(); ignoreSuggestion(${realIdx})">Ignore</button>
+                    </div>` : ''}
+                </div>
+            `}).join('');
+        }
+
+        function renderReadabilityPanel() {
+            const text = getPlainText();
+            const words = text.split(/\s+/).filter(w => w.length > 0);
+            const sentences = text.split(/[.!?]+/).filter(s => s.trim().length > 0);
+            const syllables = words.reduce((acc, w) => acc + countSyllables(w), 0);
+            
+            const avgWordsPerSentence = words.length / Math.max(sentences.length, 1);
+            const avgSyllablesPerWord = syllables / Math.max(words.length, 1);
+            
+            const score = 206.835 - (1.015 * avgWordsPerSentence) - (84.6 * avgSyllablesPerWord);
+            const readability = Math.max(0, Math.min(100, Math.round(score)));
+            
+            let grade = 'College';
+            if (readability >= 90) grade = '5th Grade';
+            else if (readability >= 80) grade = '6th Grade';
+            else if (readability >= 70) grade = '7th Grade';
+            else if (readability >= 60) grade = '8th-9th Grade';
+            else if (readability >= 50) grade = '10th-12th Grade';
+            else if (readability >= 30) grade = 'College';
+            else grade = 'Graduate';
+
+            sidebarContent.innerHTML = `
+                <div class="readability-panel">
+                    <div class="readability-metric">
+                        <div>
+                            <div class="metric-label">Readability Score</div>
+                            <div class="metric-value" style="color: ${readability > 60 ? 'var(--success)' : readability > 40 ? 'var(--warning)' : 'var(--error)'}">${readability}/100</div>
+                        </div>
+                        <div class="metric-bar"><div class="metric-bar-fill" style="width: ${readability}%; background: ${readability > 60 ? 'var(--success)' : readability > 40 ? 'var(--warning)' : 'var(--error)'}"></div></div>
+                    </div>
+                    <div class="readability-metric">
+                        <span class="metric-label">Reading Level</span>
+                        <span class="metric-value">${grade}</span>
+                    </div>
+                    <div class="readability-metric">
+                        <span class="metric-label">Words</span>
+                        <span class="metric-value">${words.length}</span>
+                    </div>
+                    <div class="readability-metric">
+                        <span class="metric-label">Sentences</span>
+                        <span class="metric-value">${sentences.length}</span>
+                    </div>
+                    <div class="readability-metric">
+                        <span class="metric-label">Avg. Words/Sentence</span>
+                        <span class="metric-value">${avgWordsPerSentence.toFixed(1)}</span>
+                    </div>
+                    <div class="readability-metric">
+                        <span class="metric-label">Avg. Syllables/Word</span>
+                        <span class="metric-value">${avgSyllablesPerWord.toFixed(2)}</span>
+                    </div>
+                    <div style="margin-top: 16px; padding: 12px; background: var(--bg); border-radius: 8px; font-size: 13px; color: var(--text-secondary); line-height: 1.5;">
+                        💡 <strong>Tip:</strong> Aim for 60-80 for general audiences. Use shorter sentences and simpler words to improve clarity.
+                    </div>
+                </div>
+            `;
+        }
+
+        function countSyllables(word) {
+            word = word.toLowerCase().replace(/[^a-z]/g, '');
+            if (word.length <= 3) return 1;
+            word = word.replace(/(?:[^laeiouy]es|ed|[^laeiouy]e)$/, '').replace(/^y/, '');
+            const matches = word.match(/[aeiouy]{1,2}/g);
+            return matches ? matches.length : 1;
+        }
+
+        function updateStats() {
+            const text = getPlainText();
+            const words = text.split(/\s+/).filter(w => w.length > 0);
+            
+            document.getElementById('wordCount').textContent = words.length;
+            document.getElementById('readTime').textContent = Math.ceil(words.length / 200);
+            
+            const counts = { error: 0, warning: 0, info: 0 };
+            suggestions.forEach(s => counts[s.type] = (counts[s.type] || 0) + 1);
+            
+            document.getElementById('errorCount').textContent = counts.error;
+            document.getElementById('warningCount').textContent = counts.warning;
+            document.getElementById('infoCount').textContent = counts.info;
+
+            let score = 100;
+            score -= counts.error * 8;
+            score -= counts.warning * 4;
+            score -= counts.info * 1;
+            score = Math.max(0, Math.min(100, score));
+            
+            document.getElementById('overallScore').textContent = score;
+            const circle = document.getElementById('scoreCircle');
+            circle.textContent = score;
+            circle.className = `score-circle ${score >= 80 ? 'score-excellent' : score >= 50 ? 'score-good' : 'score-poor'}`;
+        }
+
+        function applyFix(idx) {
+            const s = suggestions[idx];
+            if (!s || !s.fix) return;
+            
+            let text = getPlainText();
+            text = text.slice(0, s.start) + s.fix + text.slice(s.end);
+            editor.innerText = text;
+            suggestions.splice(idx, 1);
+            updateHighlights();
+            updateSidebar();
+            updateStats();
+            lastCheckedText = text;
+        }
+
+        function ignoreSuggestion(idx) {
+            suggestions.splice(idx, 1);
+            updateHighlights();
+            updateSidebar();
+            updateStats();
+        }
+
+        function focusSuggestion(idx) {
+            const highlights = editor.querySelectorAll(`[data-idx="${idx}"]`);
+            if (highlights.length) highlights[0].scrollIntoView({ behavior: 'smooth', block: 'center' });
+        }
+
+        function switchTab(tab, btn) {
+            currentTab = tab;
+            document.querySelectorAll('.sidebar-tab').forEach(t => t.classList.remove('active'));
+            btn.classList.add('active');
+            updateSidebar();
+        }
+
+        function clearText() {
+            editor.innerText = '';
+            suggestions = [];
+            lastCheckedText = '';
+            resetUI();
+            try { localStorage.removeItem('writeassist_draft'); } catch (e) {}
+        }
+
+        function resetUI() {
+            document.getElementById('wordCount').textContent = '0';
+            document.getElementById('readTime').textContent = '0';
+            document.getElementById('errorCount').textContent = '0';
+            document.getElementById('warningCount').textContent = '0';
+            document.getElementById('infoCount').textContent = '0';
+            document.getElementById('overallScore').textContent = '--';
+            document.getElementById('scoreCircle').textContent = '--';
+            document.getElementById('scoreCircle').className = 'score-circle score-excellent';
+            document.getElementById('allCount').textContent = '0';
+            document.getElementById('errorsCount').textContent = '0';
+            document.getElementById('styleCount').textContent = '0';
+            sidebarContent.innerHTML = `
+                <div class="empty-state">
+                    <div class="empty-state-icon">📝</div>
+                    <h4>Start Writing</h4>
+                    <p>Type or paste your text in the editor and click "Analyze" to get instant feedback.</p>
+                </div>`;
+        }
+
+        // ==================== FLOATING SUGGESTION TOOLTIP ====================
+        function closeFloatingUI() {
+            document.querySelectorAll('.sugg-tooltip, .synonym-popover').forEach(el => el.remove());
+        }
+
+        function showSuggestionTooltip(span) {
+            closeFloatingUI();
+            const idx = parseInt(span.getAttribute('data-idx'), 10);
+            const s = suggestions[idx];
+            if (!s) return;
+
+            const rect = span.getBoundingClientRect();
+            const tip = document.createElement('div');
+            tip.className = 'sugg-tooltip';
+            tip.style.top = `${Math.min(window.innerHeight - 160, rect.bottom + 8)}px`;
+            tip.style.left = `${Math.min(window.innerWidth - 296, Math.max(8, rect.left))}px`;
+
+            const typeLabel = s.type === 'error' ? '🔴 Grammar/Spelling' : s.type === 'warning' ? '🟡 Style' : '🔵 Clarity';
+            const isSpelling = s.type === 'error';
+
+            tip.innerHTML = `
+                <button class="tooltip-close" aria-label="Close" onclick="closeFloatingUI()">✕</button>
+                <div class="suggestion-type type-${s.type}">${typeLabel}</div>
+                ${s.fix ? `<div class="suggestion-original">${escapeHtml(s.original)}</div>
+                           <div class="suggestion-fix">${escapeHtml(s.fix)}</div>` : ''}
+                <div class="suggestion-explanation">${s.message}</div>
+                <div class="tooltip-actions">
+                    ${s.fix ? `<button class="btn btn-primary" onclick="applyFix(${idx}); closeFloatingUI();">Apply</button>` : ''}
+                    <button class="btn btn-secondary" onclick="ignoreSuggestion(${idx}); closeFloatingUI();">Ignore</button>
+                    ${isSpelling ? `<button class="btn btn-dict" onclick="addToDictionary('${s.original.replace(/'/g, "\\'")}', ${idx})">📖 Add to Dictionary</button>` : ''}
+                </div>
+            `;
+            document.body.appendChild(tip);
+        }
+
+        function addToDictionary(word, idx) {
+            const lower = word.toLowerCase();
+            customDictionary.add(lower);
+            saveDictionary();
+            if (cloudSyncEnabled && currentUser) {
+                supabaseClient.from('dictionary_words')
+                    .upsert({ user_id: currentUser.id, word: lower })
+                    .then(({ error }) => { if (error) console.warn('Dictionary sync failed:', error); });
+            }
+            ignoreSuggestion(idx);
+            closeFloatingUI();
+        }
+
+        // ==================== SYNONYM LOOKUP (real Datamuse API call) ====================
+        async function showSynonymPopover(word, rect, range) {
+            closeFloatingUI();
+            const pop = document.createElement('div');
+            pop.className = 'synonym-popover';
+            pop.style.top = `${Math.min(window.innerHeight - 140, rect.bottom + 8)}px`;
+            pop.style.left = `${Math.min(window.innerWidth - 276, Math.max(8, rect.left))}px`;
+            pop.innerHTML = `<div class="synonym-title">Synonyms for "${escapeHtml(word)}"</div><div class="synonym-empty">Loading…</div>`;
+            document.body.appendChild(pop);
+
+            try {
+                const res = await fetch(`https://api.datamuse.com/words?rel_syn=${encodeURIComponent(word)}&max=8`);
+                if (!res.ok) throw new Error('Lookup failed');
+                const data = await res.json();
+                if (!data.length) {
+                    pop.innerHTML = `<div class="synonym-title">Synonyms for "${escapeHtml(word)}"</div><div class="synonym-empty">No synonyms found.</div>`;
+                    return;
+                }
+                pop.innerHTML = `
+                    <div class="synonym-title">Synonyms for "${escapeHtml(word)}"</div>
+                    <div class="synonym-chips">
+                        ${data.map(d => `<button class="synonym-chip" onclick="replaceWithSynonym('${d.word.replace(/'/g, "\\'")}')">${escapeHtml(d.word)}</button>`).join('')}
+                    </div>`;
+                pop._range = range;
+            } catch (e) {
+                pop.innerHTML = `<div class="synonym-title">Synonyms for "${escapeHtml(word)}"</div><div class="synonym-empty">Couldn't reach the synonym service.</div>`;
+            }
+        }
+
+        function replaceWithSynonym(newWord) {
+            // insertText only ever changes text content, never inserts markup —
+            // this is what keeps the plain-text offset model intact (the same
+            // reason the old bold/italic toolbar was removed).
+            const selection = window.getSelection();
+            selection.removeAllRanges();
+            const pop = document.querySelector('.synonym-popover');
+            if (pop && pop._range) selection.addRange(pop._range);
+            document.execCommand('insertText', false, newWord);
+            closeFloatingUI();
+            clearTimeout(debounceTimer);
+            debounceTimer = setTimeout(analyzeText, 400);
+            scheduleAutosave();
+        }
+
+        // ==================== APPLY-ALL WITH DIFF PREVIEW ====================
+        function openApplyAllModal() {
+            const fixable = suggestions.filter(s => s.fix !== null && s.fix !== undefined);
+            const text = getPlainText();
+
+            if (!suggestions.length) {
+                alert('No suggestions to review yet — click Analyze first.');
+                return;
+            }
+            if (!fixable.length) {
+                alert('None of the current suggestions have an automatic fix — they need manual review in the sidebar.');
+                return;
+            }
+
+            const sorted = [...fixable].sort((a, b) => a.start - b.start);
+            let html = '';
+            let last = 0;
+            sorted.forEach(s => {
+                html += escapeHtml(text.slice(last, s.start));
+                html += `<span class="diff-del">${escapeHtml(s.original)}</span><span class="diff-add">${escapeHtml(s.fix)}</span>`;
+                last = s.end;
+            });
+            html += escapeHtml(text.slice(last));
+
+            const skipped = suggestions.length - fixable.length;
+            const overlay = document.createElement('div');
+            overlay.className = 'modal-overlay';
+            overlay.id = 'applyAllOverlay';
+            overlay.addEventListener('click', (e) => { if (e.target === overlay) closeApplyAllModal(); });
+            overlay.innerHTML = `
+                <div class="modal" role="dialog" aria-modal="true" aria-label="Preview all fixes">
+                    <div class="modal-header">
+                        <h3>Preview: ${fixable.length} fix${fixable.length === 1 ? '' : 'es'}</h3>
+                        <button class="tooltip-close" style="position:static;" aria-label="Close" onclick="closeApplyAllModal()">✕</button>
+                    </div>
+                    ${skipped > 0 ? `<div class="modal-note">${skipped} suggestion${skipped === 1 ? '' : 's'} need manual review and won't be changed here.</div>` : ''}
+                    <div class="modal-body">${html}</div>
+                    <div class="modal-footer">
+                        <button class="btn btn-secondary" onclick="closeApplyAllModal()">Cancel</button>
+                        <button class="btn btn-primary" onclick="confirmApplyAll()">Apply ${fixable.length} Fix${fixable.length === 1 ? '' : 'es'}</button>
+                    </div>
+                </div>`;
+            document.body.appendChild(overlay);
+        }
+
+        function closeApplyAllModal() {
+            document.getElementById('applyAllOverlay')?.remove();
+        }
+
+        function confirmApplyAll() {
+            let text = getPlainText();
+            const fixable = [...suggestions]
+                .filter(s => s.fix !== null && s.fix !== undefined)
+                .sort((a, b) => b.start - a.start); // right-to-left so earlier offsets stay valid
+
+            fixable.forEach(s => {
+                text = text.slice(0, s.start) + s.fix + text.slice(s.end);
+            });
+
+            editor.innerText = text;
+            suggestions = suggestions.filter(s => s.fix === null || s.fix === undefined);
+            lastCheckedText = text;
+            updateHighlights();
+            updateSidebar();
+            updateStats();
+            scheduleAutosave();
+            closeApplyAllModal();
+        }
+
+        function showLoadingState() {
+            sidebarContent.innerHTML = `
+                <div class="loading-state">
+                    <div class="loading-spinner"></div>
+                    <div style="font-size: 14px; color: var(--text-secondary);">Analyzing grammar & style...</div>
+                </div>
+            `;
+        }
+
+        // ==================== EVENT LISTENERS ====================
+        editor.addEventListener('input', () => {
+            clearTimeout(debounceTimer);
+            debounceTimer = setTimeout(analyzeText, 1200);
+            scheduleAutosave();
+            closeFloatingUI();
+        });
+
+        // Click a highlighted error/style span → floating tooltip with
+        // Apply / Ignore / (for spelling) Add to Dictionary.
+        editor.addEventListener('click', (e) => {
+            const span = e.target.closest('[data-idx]');
+            if (!span) { closeFloatingUI(); return; }
+            e.stopPropagation();
+            showSuggestionTooltip(span);
+        });
+
+        // Double-click any word → real synonym lookup via the Datamuse API.
+        editor.addEventListener('dblclick', (e) => {
+            if (e.target.closest('[data-idx]')) return; // let the suggestion tooltip handle flagged words
+            const selection = window.getSelection();
+            const word = (selection.toString() || '').trim().replace(/[^a-zA-Z'-]/g, '');
+            if (!word || word.length < 3) return;
+            const range = selection.getRangeAt(0);
+            const rect = range.getBoundingClientRect();
+            showSynonymPopover(word, rect, range);
+        });
+
+        document.addEventListener('scroll', closeFloatingUI, true);
+        document.addEventListener('click', (e) => {
+            if (!e.target.closest('.sugg-tooltip, .synonym-popover, #editor')) closeFloatingUI();
+        });
+        document.addEventListener('keydown', (e) => { if (e.key === 'Escape') { closeFloatingUI(); closeApplyAllModal(); } });
+
+        // Keyboard navigation for the suggestion sidebar: Up/Down to move
+        // between cards, Enter to apply the focused fix, Delete/Backspace to
+        // ignore it — so the suggestion list is usable without a mouse.
+        sidebarContent.addEventListener('keydown', (e) => {
+            const cards = Array.from(sidebarContent.querySelectorAll('.suggestion-card'));
+            if (!cards.length) return;
+            const focusedIdx = cards.indexOf(document.activeElement);
+
+            if (e.key === 'ArrowDown') {
+                e.preventDefault();
+                cards[Math.min(cards.length - 1, focusedIdx + 1)]?.focus();
+            } else if (e.key === 'ArrowUp') {
+                e.preventDefault();
+                cards[Math.max(0, focusedIdx - 1)]?.focus();
+            } else if (e.key === 'Enter' && focusedIdx >= 0) {
+                e.preventDefault();
+                document.activeElement.querySelector('.btn-primary')?.click();
+            } else if ((e.key === 'Delete' || e.key === 'Backspace') && focusedIdx >= 0) {
+                e.preventDefault();
+                document.activeElement.querySelector('.btn-secondary')?.click();
+            }
+        });
+
+        editor.addEventListener('focus', () => {
+            if (suggestions.length > 0) {
+                editor.innerText = getPlainText();
+            }
+        });
+
+        editor.addEventListener('blur', () => {
+            if (suggestions.length > 0 && !isAnalyzing) {
+                updateHighlights();
+            }
+        });
+
+        // ==================== LOCAL FALLBACK DATA ====================
+        const misspellings = {
+            'teh': 'the', 'recieve': 'receive', 'occured': 'occurred', 'seperate': 'separate',
+            'definately': 'definitely', 'goverment': 'government', 'occassion': 'occasion',
+            'untill': 'until', 'wierd': 'weird', 'accomodate': 'accommodate', 'acheive': 'achieve',
+            'agressive': 'aggressive', 'apparant': 'apparent', 'arguement': 'argument',
+            'basicly': 'basically', 'begining': 'beginning', 'beleive': 'believe', 'buisness': 'business',
+            'calender': 'calendar', 'catagory': 'category', 'cemetary': 'cemetery', 'changable': 'changeable',
+            'collegue': 'colleague', 'comming': 'coming', 'committment': 'commitment', 'completly': 'completely',
+            'concious': 'conscious', 'curiousity': 'curiosity', 'dissapear': 'disappear', 'embarass': 'embarrass',
+            'enviroment': 'environment', 'existance': 'existence', 'experiance': 'experience', 'familar': 'familiar',
+            'finaly': 'finally', 'foriegn': 'foreign', 'fourty': 'forty', 'freind': 'friend', 'gaurd': 'guard',
+            'happend': 'happened', 'harrass': 'harass', 'heighth': 'height', 'heros': 'heroes', 'humourous': 'humorous',
+            'immediatly': 'immediately', 'independant': 'independent', 'intresting': 'interesting', 'knowlege': 'knowledge',
+            'liason': 'liaison', 'libary': 'library', 'lisence': 'license', 'maintainance': 'maintenance',
+            'manuever': 'maneuver', 'millenium': 'millennium', 'mispell': 'misspell', 'naturaly': 'naturally',
+            'neccessary': 'necessary', 'noticable': 'noticeable', 'occurance': 'occurrence', 'offical': 'official',
+            'oportunity': 'opportunity', 'parliment': 'parliament', 'particulary': 'particularly', 'passtime': 'pastime',
+            'perseverence': 'perseverance', 'personel': 'personnel', 'posession': 'possession', 'potatos': 'potatoes',
+            'preceed': 'precede', 'privelege': 'privilege', 'professer': 'professor', 'promiss': 'promise',
+            'pronounciation': 'pronunciation', 'publically': 'publicly', 'realy': 'really', 'reccomend': 'recommend',
+            'refered': 'referred', 'religous': 'religious', 'repitition': 'repetition', 'resistence': 'resistance',
+            'rythm': 'rhythm', 'sentance': 'sentence', 'sieze': 'seize', 'similer': 'similar', 'speach': 'speech',
+            'strenght': 'strength', 'succesful': 'successful', 'supercede': 'supersede', 'suprise': 'surprise',
+            'temperture': 'temperature', 'tommorow': 'tomorrow', 'truely': 'truly', 'unfortunatly': 'unfortunately',
+            'unneccessary': 'unnecessary', 'vaccuum': 'vacuum', 'vegetble': 'vegetable', 'visious': 'vicious',
+            'wether': 'whether', 'writting': 'writing', 'alot': 'a lot', 'thier': 'their', 'adn': 'and',
+            'taht': 'that', 'wiht': 'with', 'whcih': 'which', 'whlie': 'while', 'bcak': 'back', 'nad': 'and',
+            'fo': 'of', 'ot': 'to', 'si': 'is', 'ti': 'it', 'od': 'do', 'waht': 'what',
+            'dont': "don't", 'cant': "can't", 'wont': "won't", 'didnt': "didn't", 'doesnt': "doesn't",
+            'isnt': "isn't", 'wasnt': "wasn't", 'arent': "aren't", 'werent': "weren't", 'hasnt': "hasn't",
+            'havent': "haven't", 'hadnt': "hadn't", 'wouldnt': "wouldn't", 'shouldnt': "shouldn't",
+            'couldnt': "couldn't", 'im': "I'm", 'ive': "I've", 'id': "I'd", 'youre': "you're",
+            'theyre': "they're", 'were': "we're", 'hes': "he's", 'shes': "she's", 'its': "it's",
+            'thats': "that's", 'whos': "who's", 'whats': "what's", 'heres': "here's", 'theres': "there's",
+            'wheres': "where's", 'lets': "let's", 'youve': "you've", 'weve': "we've", 'theyve': "they've",
+            'shouldve': "should've", 'wouldve': "would've", 'couldve': "could've", 'mustve': "must've"
+        };
+
+        const stylePatterns = [
+            { pattern: /\b(in order to)\b/gi, fix: 'to', message: 'Simplify to "to".', type: 'info' },
+            { pattern: /\b(due to the fact that)\b/gi, fix: 'because', message: 'Simplify to "because".', type: 'info' },
+            { pattern: /\b(at this point in time)\b/gi, fix: 'now', message: 'Simplify to "now".', type: 'info' },
+            { pattern: /\b(in the near future)\b/gi, fix: 'soon', message: 'Simplify to "soon".', type: 'info' },
+            { pattern: /\b(with regard to)\b/gi, fix: 'regarding', message: 'Use "regarding" or "about".', type: 'info' },
+            { pattern: /\b(in the event that)\b/gi, fix: 'if', message: 'Simplify to "if".', type: 'info' },
+            { pattern: /\b(on a daily basis)\b/gi, fix: 'daily', message: 'Simplify to "daily".', type: 'info' },
+            { pattern: /\b(has the ability to)\b/gi, fix: 'can', message: 'Simplify to "can".', type: 'info' },
+            { pattern: /\b(very unique|very perfect|absolutely essential)\b/gi, fix: (m) => m.replace(/very |absolutely /g, ''), message: 'Absolute adjectives don\'t need intensifiers.', type: 'warning' },
+            { pattern: /\b(make sure)\b/gi, fix: 'ensure', message: 'Use "ensure" formally.', type: 'info' },
+            { pattern: /\b(find out)\b/gi, fix: 'discover', message: 'Use "discover" or "determine" formally.', type: 'info' },
+            { pattern: /\b(look into)\b/gi, fix: 'investigate', message: 'Use "investigate" or "examine" formally.', type: 'info' },
+            { pattern: /\b(thing|things|stuff)\b/gi, fix: null, message: 'Vague word. Be more specific.', type: 'info', vague: true }
+        ];
+
+        // Initial setup — the auth screen (shown by default in HTML) stays
+        // up until initAuth() finds a session or the user picks "Continue
+        // without an account."
+        initAuth();
+
+        // Register the service worker so the app can be installed and can
+        // still open with no internet connection (local-only mode). Silently
+        // does nothing if the browser doesn't support it, or if the file is
+        // opened directly (file://) rather than served over http(s) — service
+        // workers require a real origin, so this only activates once hosted.
+        if ('serviceWorker' in navigator && (location.protocol === 'https:' || location.hostname === 'localhost')) {
+            navigator.serviceWorker.register('./service-worker.js').catch((err) => {
+                console.warn('Service worker registration failed:', err);
+            });
+        }
+    </script>
+</body>
+</html>
