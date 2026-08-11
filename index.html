@@ -1227,26 +1227,76 @@
             return results;
         }
 
+        // Contenteditable rebuilds its innerHTML every time suggestions
+        // re-render (after each pause-to-check cycle). Without this, that
+        // rebuild resets the cursor to the very start of the document —
+        // these two functions save the cursor's character position before
+        // the rebuild and restore it to the same spot afterward.
+        function getCaretOffset(root) {
+            const sel = window.getSelection();
+            if (!sel || sel.rangeCount === 0) return null;
+            const range = sel.getRangeAt(0);
+            if (!root.contains(range.startContainer)) return null;
+            const preRange = document.createRange();
+            preRange.selectNodeContents(root);
+            preRange.setEnd(range.startContainer, range.startOffset);
+            return preRange.toString().length;
+        }
+
+        function setCaretOffset(root, offset) {
+            if (offset === null || offset === undefined) return;
+            const walker = document.createTreeWalker(root, NodeFilter.SHOW_TEXT, null);
+            let node, charCount = 0, targetNode = null, targetOffset = 0;
+            while ((node = walker.nextNode())) {
+                const nextCount = charCount + node.textContent.length;
+                if (offset <= nextCount) {
+                    targetNode = node;
+                    targetOffset = offset - charCount;
+                    break;
+                }
+                charCount = nextCount;
+            }
+            const sel = window.getSelection();
+            const range = document.createRange();
+            if (targetNode) {
+                range.setStart(targetNode, targetOffset);
+            } else {
+                range.selectNodeContents(root);
+                range.collapse(false);
+            }
+            range.collapse(true);
+            sel.removeAllRanges();
+            sel.addRange(range);
+        }
+
         function updateHighlights() {
+            // Only bother saving/restoring the cursor if the user was
+            // actually typing in the editor — if the rebuild was triggered
+            // some other way (e.g. clicking Analyze with focus elsewhere),
+            // there's no cursor position worth preserving.
+            const wasFocused = document.activeElement === editor;
+            const savedOffset = wasFocused ? getCaretOffset(editor) : null;
+
             const text = getPlainText();
             if (suggestions.length === 0) {
                 editor.innerHTML = text.replace(/\n/g, '<br>');
-                return;
+            } else {
+                let html = '';
+                let lastIndex = 0;
+                for (let i = 0; i < suggestions.length; i++) {
+                    const s = suggestions[i];
+                    html += escapeHtml(text.slice(lastIndex, s.start));
+                    const className = s.type === 'error' ? 'highlight-spelling' : 
+                                      s.type === 'warning' ? 'highlight-grammar' : 
+                                      s.type === 'style' ? 'highlight-style' : 'highlight-clarity';
+                    html += `<span class="${className}" data-idx="${i}">${escapeHtml(s.original)}</span>`;
+                    lastIndex = s.end;
+                }
+                html += escapeHtml(text.slice(lastIndex));
+                editor.innerHTML = html;
             }
 
-            let html = '';
-            let lastIndex = 0;
-            for (let i = 0; i < suggestions.length; i++) {
-                const s = suggestions[i];
-                html += escapeHtml(text.slice(lastIndex, s.start));
-                const className = s.type === 'error' ? 'highlight-spelling' : 
-                                  s.type === 'warning' ? 'highlight-grammar' : 
-                                  s.type === 'style' ? 'highlight-style' : 'highlight-clarity';
-                html += `<span class="${className}" data-idx="${i}">${escapeHtml(s.original)}</span>`;
-                lastIndex = s.end;
-            }
-            html += escapeHtml(text.slice(lastIndex));
-            editor.innerHTML = html;
+            if (wasFocused) setCaretOffset(editor, savedOffset);
         }
 
         function escapeHtml(text) {
