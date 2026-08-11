@@ -475,6 +475,16 @@
         }
 
         .suggestion-card:hover { box-shadow: var(--shadow); border-color: var(--border); }
+        .fallback-banner {
+            background: var(--warning-light);
+            color: var(--warning);
+            border: 1px solid var(--warning);
+            border-radius: 10px;
+            padding: 12px 14px;
+            font-size: 13px;
+            line-height: 1.5;
+            margin-bottom: 14px;
+        }
         .suggestion-card:focus-visible { box-shadow: var(--shadow); border-color: var(--primary); outline: 2px solid var(--primary); outline-offset: 1px; }
         .card-error { background: var(--error-light); }
         .card-warning { background: var(--warning-light); }
@@ -717,6 +727,8 @@
         // for a cooldown window, instead of silently retrying on every keystroke.
         let apiFailureCount = 0;
         let apiBackoffUntil = 0;
+        let lastCheckMode = null; // 'live' | 'local' — drives the fallback warning banner
+        let lastApiErrorReason = '';
 
         // Persistent custom dictionary — words the user has told the app to
         // stop flagging. Unlike a session-only Set, this survives reloads.
@@ -1034,21 +1046,27 @@
                 // Still cooling down from repeated failures/rate limits — don't
                 // hammer the API again, go straight to local checking.
                 setStatus('local');
+                lastCheckMode = 'local';
+                lastApiErrorReason = lastApiErrorReason || 'Waiting before retrying the grammar service';
                 suggestions = runLocalChecks(text, goalSettings);
             } else {
                 try {
                     const apiResults = await fetchLanguageTool(text, goalSettings);
                     suggestions = processAPIResults(apiResults, text);
                     apiFailureCount = 0;
+                    lastApiErrorReason = '';
                     setStatus('live');
+                    lastCheckMode = 'live';
                 } catch (error) {
                     console.warn('API failed, using local fallback:', error);
+                    lastApiErrorReason = error.message || 'Unknown error';
                     apiFailureCount++;
                     // Exponential backoff: 10s, 20s, 40s... capped at 5 minutes,
                     // so a flaky connection doesn't retry every single keystroke.
                     const backoffMs = Math.min(300000, 10000 * Math.pow(2, apiFailureCount - 1));
                     apiBackoffUntil = Date.now() + backoffMs;
                     setStatus('local');
+                    lastCheckMode = 'local';
                     suggestions = runLocalChecks(text, goalSettings);
                 }
             }
@@ -1077,15 +1095,24 @@
 
         async function fetchLanguageTool(text, goalSettings) {
             const level = goalSettings ? goalSettings.ltLevel : 'default';
+            // IMPORTANT: .toString() here is required, not cosmetic. Some
+            // sandboxed preview environments (and older WebViews) proxy fetch()
+            // calls through postMessage, which can only carry plain
+            // structured-cloneable values — a raw URLSearchParams object throws
+            // "DataCloneError" in that context and silently kills every grammar
+            // check, forcing the app into local-only mode. A plain string body
+            // always works, everywhere.
+            const body = new URLSearchParams({
+                text: text,
+                language: 'en-US',
+                enabledOnly: 'false',
+                level: level
+            }).toString();
+
             const response = await fetch('https://api.languagetool.org/v2/check', {
                 method: 'POST',
                 headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
-                body: new URLSearchParams({
-                    text: text,
-                    language: 'en-US',
-                    enabledOnly: 'false',
-                    level: level
-                })
+                body: body
             });
 
             if (response.status === 429) throw new Error('Rate limited');
@@ -1195,6 +1222,24 @@
             return text.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/\n/g, '<br>');
         }
 
+        function retryLiveCheck() {
+            apiBackoffUntil = 0;
+            apiFailureCount = 0;
+            lastCheckedText = ''; // force a re-check even if text hasn't changed
+            analyzeText();
+        }
+
+        function fallbackBannerHtml() {
+            if (lastCheckMode !== 'local') return '';
+            return `
+                <div class="fallback-banner" role="alert">
+                    <strong>⚠️ Live grammar check unavailable right now</strong> — showing basic spelling and style checks only. Real grammar/tense/agreement errors won't be caught until the live check reconnects.
+                    <div style="margin-top:8px;">
+                        <button class="btn btn-secondary" style="padding:5px 10px; font-size:12px;" onclick="retryLiveCheck()">Retry Live Check</button>
+                    </div>
+                </div>`;
+        }
+
         function updateSidebar() {
             const counts = { error: 0, warning: 0, info: 0 };
             suggestions.forEach(s => counts[s.type] = (counts[s.type] || 0) + 1);
@@ -1213,18 +1258,20 @@
             else if (currentTab === 'style') filtered = suggestions.filter(s => s.type === 'warning' || s.type === 'info');
 
             if (filtered.length === 0) {
-                sidebarContent.innerHTML = `
+                sidebarContent.innerHTML = fallbackBannerHtml() + `
                     <div class="empty-state">
-                        <div class="empty-state-icon">✅</div>
-                        <h4>Great Writing!</h4>
-                        <p>No ${currentTab === 'all' ? 'issues' : currentTab} found in this category.</p>
+                        <div class="empty-state-icon">${lastCheckMode === 'local' ? '🟡' : '✅'}</div>
+                        <h4>${lastCheckMode === 'local' ? 'No basic issues found' : 'Great Writing!'}</h4>
+                        <p>${lastCheckMode === 'local'
+                            ? 'Only spelling and a few style patterns were checked — full grammar checking is temporarily unavailable (see above).'
+                            : `No ${currentTab === 'all' ? 'issues' : currentTab} found in this category.`}</p>
                     </div>`;
                 return;
             }
 
             sidebarContent.setAttribute('role', 'list');
             sidebarContent.setAttribute('aria-label', `${filtered.length} writing suggestions`);
-            sidebarContent.innerHTML = filtered.map((s, i) => {
+            sidebarContent.innerHTML = fallbackBannerHtml() + filtered.map((s, i) => {
                 const realIdx = suggestions.indexOf(s);
                 const typeLabel = s.type === 'error' ? 'Grammar/Spelling' : s.type === 'warning' ? 'Style' : 'Clarity';
                 return `
@@ -1331,7 +1378,8 @@
             
             document.getElementById('overallScore').textContent = score;
             const circle = document.getElementById('scoreCircle');
-            circle.textContent = score;
+            circle.textContent = lastCheckMode === 'local' ? `${score}*` : score;
+            circle.title = lastCheckMode === 'local' ? 'Based on local-only checks — live grammar check is unavailable' : '';
             circle.className = `score-circle ${score >= 80 ? 'score-excellent' : score >= 50 ? 'score-good' : 'score-poor'}`;
         }
 
