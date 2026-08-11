@@ -485,6 +485,26 @@
             line-height: 1.5;
             margin-bottom: 14px;
         }
+        .fallback-banner-global {
+            background: var(--warning-light);
+            color: var(--warning);
+            border-bottom: 1px solid var(--warning);
+            padding: 10px 20px;
+            font-size: 13px;
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+            gap: 12px;
+            flex-wrap: wrap;
+        }
+        .fallback-banner-global .btn {
+            padding: 5px 12px;
+            font-size: 12px;
+            white-space: nowrap;
+        }
+        @media (max-width: 640px) {
+            .fallback-banner-global { padding: 10px 14px; font-size: 12px; }
+        }
         .suggestion-card:focus-visible { box-shadow: var(--shadow); border-color: var(--primary); outline: 2px solid var(--primary); outline-offset: 1px; }
         .card-error { background: var(--error-light); }
         .card-warning { background: var(--warning-light); }
@@ -663,6 +683,11 @@
             <button class="btn btn-primary" id="analyzeBtn" onclick="analyzeText()">✨ Analyze</button>
         </div>
     </header>
+
+    <div class="fallback-banner-global" id="globalFallbackBanner" style="display:none;" role="alert">
+        <span>⚠️ Live grammar check unavailable — showing basic spelling/style checks only. Real grammar errors won't be caught until this reconnects.</span>
+        <button class="btn btn-secondary" onclick="retryLiveCheck()">Retry Live Check</button>
+    </div>
 
     <div class="main-container">
         <div class="editor-panel">
@@ -1125,9 +1150,15 @@
             
             return data.matches
                 .map(match => {
-                    const type = match.category.id === 'TYPOS' || match.category.id === 'SPELLING' ? 'error' :
-                                 match.category.id === 'GRAMMAR' ? 'error' :
-                                 match.category.id === 'STYLE' ? 'info' : 'warning';
+                    // Not every LanguageTool match includes a `category` object —
+                    // some rule types omit it. Reading `.id` off `undefined` there
+                    // used to throw and silently kill the entire check, kicking
+                    // the app back into local-only mode. Fall back to the rule's
+                    // own id, or a safe default, instead of assuming it exists.
+                    const categoryId = match.category?.id || match.rule?.category?.id || match.rule?.issueType || '';
+                    const type = categoryId === 'TYPOS' || categoryId === 'SPELLING' ? 'error' :
+                                 categoryId === 'GRAMMAR' ? 'error' :
+                                 categoryId === 'STYLE' ? 'info' : 'warning';
                     
                     const fix = match.replacements && match.replacements.length > 0 ? match.replacements[0].value : null;
                     
@@ -1229,6 +1260,11 @@
             analyzeText();
         }
 
+        function updateGlobalBanner() {
+            const el = document.getElementById('globalFallbackBanner');
+            el.style.display = lastCheckMode === 'local' ? 'flex' : 'none';
+        }
+
         function fallbackBannerHtml() {
             if (lastCheckMode !== 'local') return '';
             return `
@@ -1241,6 +1277,7 @@
         }
 
         function updateSidebar() {
+            updateGlobalBanner();
             const counts = { error: 0, warning: 0, info: 0 };
             suggestions.forEach(s => counts[s.type] = (counts[s.type] || 0) + 1);
 
