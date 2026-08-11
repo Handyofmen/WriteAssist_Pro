@@ -10,7 +10,11 @@
 // built-in local spelling/style rules automatically — same fallback used
 // when the API is rate-limited.
 
-const CACHE_NAME = 'writeassist-shell-v1';
+// Bump this version string every time index.html changes. It's the only
+// thing that forces browsers to fetch a fresh copy instead of serving a
+// stale cached version indefinitely — without this, updating the app on
+// GitHub would silently do nothing for anyone who'd already loaded it once.
+const CACHE_NAME = 'writeassist-shell-v2';
 const SHELL_FILES = [
     './',
     './index.html',
@@ -44,10 +48,18 @@ self.addEventListener('fetch', (event) => {
         return;
     }
 
+    // Network-first for the app shell: always try to get the latest version
+    // when there's a connection (so updates show up on next load, not just
+    // after a manual cache-bust), and only serve the cached copy when
+    // there's truly no network — that's the actual offline scenario this
+    // is meant to cover.
     event.respondWith(
-        caches.match(event.request).then((cached) => {
-            if (cached) return cached;
-            return fetch(event.request).catch(() => cached);
-        })
+        fetch(event.request)
+            .then((response) => {
+                const clone = response.clone();
+                caches.open(CACHE_NAME).then((cache) => cache.put(event.request, clone));
+                return response;
+            })
+            .catch(() => caches.match(event.request))
     );
 });
